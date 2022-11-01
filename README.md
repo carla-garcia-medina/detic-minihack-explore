@@ -1,2 +1,2 @@
-# create-minihack-datasets
-Take screenshots and prompts of MiniHack environments 
+# Detic Minihack Explore
+Evaluate the performance of Detic with Minihack Environments
