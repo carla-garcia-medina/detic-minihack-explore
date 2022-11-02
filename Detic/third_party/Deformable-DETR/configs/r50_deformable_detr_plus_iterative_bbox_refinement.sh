@@ -1,11 +1,3 @@
-#!/usr/bin/env bash
-
-set -x
-
-EXP_DIR=exps/r50_deformable_detr_plus_iterative_bbox_refinement
-PY_ARGS=${@:1}
-
-python -u main.py \
-    --output_dir ${EXP_DIR} \
-    --with_box_refine \
-    ${PY_ARGS}
+version https://git-lfs.github.com/spec/v1
+oid sha256:ff86696affb1a36900f13e8e35bcdcb456a70696cc48221c86316948e62cf71e
+size 198

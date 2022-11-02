@@ -1,10 +1,3 @@
-#!/usr/bin/env bash
-
-set -x
-
-EXP_DIR=exps/r50_deformable_detr
-PY_ARGS=${@:1}
-
-python -u main.py \
-    --output_dir ${EXP_DIR} \
-    ${PY_ARGS}
+version https://git-lfs.github.com/spec/v1
+oid sha256:7bad1de03a89f1b942dc85944fd9ff040bdd32e613f48a742982269bc1102c03
+size 143

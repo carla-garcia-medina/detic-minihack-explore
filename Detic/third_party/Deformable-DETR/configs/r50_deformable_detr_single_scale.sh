@@ -1,11 +1,3 @@
-#!/usr/bin/env bash
-
-set -x
-
-EXP_DIR=exps/r50_deformable_detr_single_scale
-PY_ARGS=${@:1}
-
-python -u main.py \
-    --num_feature_levels 1 \
-    --output_dir ${EXP_DIR} \
-    ${PY_ARGS}
+version https://git-lfs.github.com/spec/v1
+oid sha256:37869bcc2be633d9533ddcf4faecb26fb38c690b2a3274f22284119c74703935
+size 185

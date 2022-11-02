@@ -1,19 +1,11 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
 import argparse
-from email import message
-import glob
 import multiprocessing as mp
 from xxlimited import Str
 import numpy as np
 import os
-import tempfile
-import time
-import warnings
-import cv2
-import tqdm
 import sys
 import shutil
-import mss
 
 from detectron2.config import get_cfg
 from detectron2.data.detection_utils import read_image
@@ -60,7 +52,7 @@ def get_parser():
     parser = argparse.ArgumentParser(description="Detectron2 demo for builtin configs")
     parser.add_argument(
         "--config-file",
-        default="configs/quick_schedules/mask_rcnn_R_50_FPN_inference_acc_test.yaml",
+        default="configs/Detic_LCOCOI21k_CLIP_SwinB_896b32_4x_ft4x_max-size.yaml",
         metavar="FILE",
         help="path to config file",
     )
@@ -91,11 +83,11 @@ def get_parser():
         default="",
         help="",
     )
-    parser.add_argument("--pred_all_class", default='True',action='store_true')
+    parser.add_argument("--pred_all_class", action='store_true')
     parser.add_argument(
         "--confidence-threshold",
         type=float,
-        default=0.5,
+        default=0.03,
         help="Minimum score for instance predictions to be shown",
     )
     parser.add_argument(
@@ -106,21 +98,15 @@ def get_parser():
     )
     return parser
 
-def screen_description_experiment(args):
-    out_dir = os.path.join(args.output, "screen_description_expts/")
-    os.mkdir(out_dir)
-    vocab = set([])
-
-    for counter in range(len(os.listdir(args.input+'pixels/'))):
-        for row in np.load('{}screen_descriptions/{}.npy'.format(args.input, counter)).reshape(1659, 80):
-            description = ''.join([chr(hex) for hex in row if hex>0])
-            if len(description) > 0:
-                vocab.add(description)
-        
-    args.vocabulary = 'custom'
-    args.custom_vocabulary = ','.join(vocab)
+def lvis_experiment(args):
+    out_dir = os.path.join(args.output, "lvis_experiment/")
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
+    
+    args.confidence_threshold = 0.5
     cfg = setup_cfg(args)
-    demo = VisualizationDemo(cfg, args)
+    demo = VisualizationDemo(cfg, args, name="lvis_experiment")
     
     for counter in range(len(os.listdir(args.input+'pixels/'))):
         img_path = '{}.jpg'.format(counter)
@@ -128,14 +114,64 @@ def screen_description_experiment(args):
         img = read_image(args.input+'pixels/' + img_path, format="BGR")
         predictions, visualized_output = demo.run_on_image(img)
         out_filename = os.path.join(out_dir, os.path.basename(img_path))
-        print(out_filename)
-        print(predictions)
         visualized_output.save(out_filename)
-        print(counter)
 
-def message_experiment(args):
-    out_dir = os.path.join(args.output, "message_expts/")
-    os.mkdir(out_dir)
+def screen_description_experiment_all_items(args):
+    out_dir = os.path.join(args.output, "screen_description_expts_all_items/")
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
+    vocab = set([])
+
+    for counter in range(len(os.listdir(args.input+'pixels/'))):
+        for row in np.load('{}screen_descriptions/{}.npy'.format(args.input, counter)).reshape(1659, 80):
+            description = ''.join([chr(hex) for hex in row if hex>0])
+            if len(description) > 0:
+                vocab.add(description)
+    
+    args.vocabulary = 'custom'
+    args.custom_vocabulary = ','.join(vocab)
+    cfg = setup_cfg(args)
+    demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
+    
+    for counter in range(len(os.listdir(args.input+'pixels/'))):
+        img_path = '{}.jpg'.format(counter)
+        
+        img = read_image(args.input+'pixels/' + img_path, format="BGR")
+        predictions, visualized_output = demo.run_on_image(img)
+        out_filename = os.path.join(out_dir, os.path.basename(img_path))
+        visualized_output.save(out_filename)
+
+def screen_description_experiment_items_in_image(args):
+    out_dir = os.path.join(args.output, "screen_description_expts_items_in_image/")
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
+        
+    for counter in range(len(os.listdir(args.input+'pixels/'))):
+        vocab = set([])
+        for row in np.load('{}screen_descriptions/{}.npy'.format(args.input, counter)).reshape(1659, 80):
+            description = ''.join([chr(hex) for hex in row if hex>0])
+            if len(description) > 0:
+                vocab.add(description)
+
+        args.vocabulary = 'custom'
+        args.custom_vocabulary = ','.join(vocab)
+        cfg = setup_cfg(args)
+        demo = VisualizationDemo(cfg, args, name="screen_description_experiment_items_in_image_" + str(counter))
+
+        img_path = '{}.jpg'.format(counter)
+        
+        img = read_image(args.input+'pixels/' + img_path, format="BGR")
+        predictions, visualized_output = demo.run_on_image(img)
+        out_filename = os.path.join(out_dir, os.path.basename(img_path))
+        visualized_output.save(out_filename)
+
+def all_message_experiment(args):
+    out_dir = os.path.join(args.output, "all_message_experiment/")
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
     vocab = set([])
 
     for counter in range(len(os.listdir(args.input+'pixels/'))):
@@ -146,16 +182,38 @@ def message_experiment(args):
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
     cfg = setup_cfg(args)
-    demo = VisualizationDemo(cfg, args)
+    demo = VisualizationDemo(cfg, args, name="all_message_experiment")
 
     for counter in range(len(os.listdir(args.input+'pixels/'))):
         img_path = '{}.jpg'.format(counter)
-        
         img = read_image(args.input+'pixels/' + img_path, format="BGR")
         predictions, visualized_output = demo.run_on_image(img)
         print(predictions)
         out_filename = os.path.join(out_dir, os.path.basename(img_path))
         visualized_output.save(out_filename)
+
+def corresponding_message_experiment(args):
+    out_dir = os.path.join(args.output, "corresponding_message_experiment/")
+    if os.path.exists(out_dir):
+        shutil.rmtree(out_dir)
+    os.makedirs(out_dir)
+    args.vocabulary = 'custom'
+    args.confidence_threshold = 0.01
+    
+    file = open(out_dir + "confidence_scores.txt", "w")
+    for counter in range(len(os.listdir(args.input+'pixels/'))):
+        message = ''.join([chr(hex) for hex in np.load('{}messages/{}.npy'.format(args.input, counter)) if hex>0])
+        args.custom_vocabulary = message
+        cfg = setup_cfg(args)
+        demo = VisualizationDemo(cfg, args, name="corresponding_message_experiment" + str(counter))
+
+        img_path = '{}.jpg'.format(counter)
+        img = read_image(args.input+'pixels/' + img_path, format="BGR")
+        predictions, visualized_output = demo.run_on_image(img)
+        file.writelines("{0} {1} {2}\n".format(counter, predictions['instances'].scores.cpu().numpy()[0], args.custom_vocabulary))
+        out_filename = os.path.join(out_dir, os.path.basename(img_path))
+        visualized_output.save(out_filename)
+    file.close()
 
 def main():
     mp.set_start_method("spawn", force=True)
@@ -163,13 +221,13 @@ def main():
     setup_logger(name="fvcore")
     logger = setup_logger()
     logger.info("Arguments: " + str(args))
+    
+    screen_description_experiment_all_items(args)
+    #screen_description_experiment_items_in_image(args)
+    #all_message_experiment(args)
+    #corresponding_message_experiment(args)
+    #lvis_experiment(args)
 
-    if os.path.exists(args.output):
-        shutil.rmtree(args.output)
-    os.makedirs(args.output)
-
-    screen_description_experiment(args)
-    message_experiment(args)
 
 if __name__ == '__main__':
     main()

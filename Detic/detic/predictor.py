@@ -38,7 +38,7 @@ BUILDIN_METADATA_PATH = {
 
 class VisualizationDemo(object):
     def __init__(self, cfg, args, 
-        instance_mode=ColorMode.IMAGE, parallel=False):
+        instance_mode=ColorMode.IMAGE, parallel=False,  name="__unused"):
         """
         Args:
             cfg (CfgNode):
@@ -47,7 +47,7 @@ class VisualizationDemo(object):
                 Useful since the visualization logic can be slow.
         """
         if args.vocabulary == 'custom':
-            self.metadata = MetadataCatalog.get("__unused")
+            self.metadata = MetadataCatalog.get(name)
             self.metadata.thing_classes = args.custom_vocabulary.split(',')
             classifier = get_clip_embeddings(self.metadata.thing_classes)
         else:
