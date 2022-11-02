@@ -97,6 +97,20 @@ def get_parser():
     )
     return parser
 
+
+def get_bbox_center(x1, y1, x2, y2):
+    x = int((x1+x2)/2)
+    y = int((y1+y2)/2)
+    return x, y
+
+def get_bboxes_labels(bboxes, labels):
+    labels = []
+    for bbox in bboxes:
+        x, y = get_bbox_center(bbox)
+    labels.append(labels[x, y])
+
+    return labels
+
 def screen_description_experiment_all_items(args):
     out_dir = os.path.join(args.output, "screen_description_expts_all_items/")
     if os.path.exists(out_dir):
@@ -111,6 +125,8 @@ def screen_description_experiment_all_items(args):
                 vocab.add(description)
     
     print(len(vocab))
+    print(vocab)
+
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
     cfg = setup_cfg(args)
@@ -120,10 +136,12 @@ def screen_description_experiment_all_items(args):
         img_path = '{}.jpg'.format(counter)
         
         img = read_image(args.input+'pixels/' + img_path, format="BGR")
+        labels = np.load(args.input+'screen_descriptions/' + img_path)
+        
         predictions, visualized_output = demo.run_on_image(img)
-        #print(predictions)
-        out_filename = os.path.join(out_dir, os.path.basename(img_path))
-        visualized_output.save(out_filename)
+        bboxes = predictions['instances'].scores.cpu().numpy()
+        #get_bboxes_labels(bboxes, labels)
+        print(get_bboxes_labels(bboxes, labels))
 
 def screen_description_experiment_items_in_image(args):
     out_dir = os.path.join(args.output, "screen_description_expts_items_in_image/")
