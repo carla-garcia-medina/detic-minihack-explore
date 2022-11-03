@@ -4,7 +4,32 @@ import imageio
 import os
 import shutil
 import numpy as np
+from PIL import Image
+import torchvision
+import cv2
 
+def autocrop(image, threshold=0):
+    """Crops any edges below or equal to threshold
+
+    Crops blank image to 1x1.
+
+    Returns cropped image.
+
+    """
+    if len(image.shape) == 3:
+        flatImage = np.max(image, 2)
+    else:
+        flatImage = image
+    assert len(flatImage.shape) == 2
+
+    rows = np.where(np.max(flatImage, 0) > threshold)[0]
+    if rows.size:
+        cols = np.where(np.max(flatImage, 1) > threshold)[0]
+        image = image[cols[0]: cols[-1] + 1, rows[0]: rows[-1] + 1]
+    else:
+        image = image[:1, :1]
+
+    return image
 
 def get_dataset(env_name, runs=1, num_screenshots=1000):
     env = gym.make(env_name, observation_keys=("glyphs", "pixel", "message", "screen_descriptions"))
@@ -43,13 +68,18 @@ def get_dataset(env_name, runs=1, num_screenshots=1000):
             if done:
                 env.reset()
             img_dataset_path = pixels_path + '/{0}.jpg'.format(counter)
-            imageio.imwrite(img_dataset_path, obs['pixel'])
+
+            img = obs['pixel']
+            #img = autocrop(img)
+
+            imageio.imwrite(img_dataset_path, img)
             np.save(glyphs_file, obs['glyphs'])
             np.save(messages_file, obs['message'])
             np.save(screen_descriptions_file, obs['screen_descriptions'])
 
         glyphs_file.close()
         messages_file.close()
+        screen_descriptions_file.close()
 
 
 def main():
