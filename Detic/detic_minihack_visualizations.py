@@ -97,19 +97,26 @@ def get_parser():
     )
     return parser
 
-
-def get_bbox_center(x1, y1, x2, y2):
-    x = int((x1+x2)/2)
-    y = int((y1+y2)/2)
-    return x, y
-
-def get_bboxes_labels(bboxes, labels):
+def get_bboxes_labels(bboxes, labels_mtrx):
+    # 112, 320
     labels = []
     for bbox in bboxes:
-        x, y = get_bbox_center(bbox)
-    labels.append(labels[x, y])
+        x1, y1, x2, y2 = bbox
+        x = int((x1+x2)/2)
+        y = int((y1+y2)/2)
+        label_mtrx = labels_mtrx[int(y/16), int(x/16)]
+        description = ''.join([chr(hex) for hex in label_mtrx if hex>0])
+        labels.append(description)
 
     return labels
+
+def get_correct_and_total(pred_classes, labels, vocab_dict):
+    correct = 0
+    for i in range(len(pred_classes)):
+        if vocab_dict[pred_classes[i]] == labels[i]:
+            correct += 1
+
+    return correct, len(pred_classes)
 
 def screen_description_experiment_all_items(args):
     out_dir = os.path.join(args.output, "screen_description_expts_all_items/")
@@ -118,30 +125,41 @@ def screen_description_experiment_all_items(args):
     os.makedirs(out_dir)
     vocab = set([])
 
+    '''
     for counter in range(len(os.listdir(args.input+'pixels/'))):
         for row in np.load('{}screen_descriptions/{}.npy'.format(args.input, counter)).reshape(1659, 80):
             description = ''.join([chr(hex) for hex in row if hex>0])
             if len(description) > 0:
                 vocab.add(description)
-    
+    '''
+    vocab = {'grid bug', 'a kobold corpse', 'a scroll labeled LOREM IPSUM', 'water', 'lichen', 'floor of a room', 'goblin', 'a boulder', 'dark part of a room', 'kobold zombie', 'sewer rat', 'newt', 'a goblin corpse', 'human rogue called Agent', 'staircase up', 'fox', 'jackal', 'a newt corpse', 'a lichen corpse'}
     print(len(vocab))
     print(vocab)
 
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
+    vocab_dict = {i:label for i, label in enumerate(args.custom_vocabulary.split(','))}
     cfg = setup_cfg(args)
     demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
     
+    correct, total = 0, 0
     for counter in range(len(os.listdir(args.input+'pixels/'))):
         img_path = '{}.jpg'.format(counter)
+        screen_description_path = '{}.npy'.format(counter)
         
         img = read_image(args.input+'pixels/' + img_path, format="BGR")
-        labels = np.load(args.input+'screen_descriptions/' + img_path)
-        
-        predictions, visualized_output = demo.run_on_image(img)
-        bboxes = predictions['instances'].scores.cpu().numpy()
-        #get_bboxes_labels(bboxes, labels)
-        print(get_bboxes_labels(bboxes, labels))
+        labels = np.load(args.input+'screen_descriptions/' + screen_description_path)
+
+        predictions, _ = demo.run_on_image(img)
+        bboxes = predictions['instances'].pred_boxes
+        pred_classess = predictions['instances'].pred_classes.cpu().numpy()
+        labels = get_bboxes_labels(bboxes, labels)
+
+        new_correct, new_total = get_correct_and_total(pred_classess, labels, vocab_dict)
+        correct += new_correct
+        total += new_total
+    
+    print('Accuracy:', correct/total)
 
 def screen_description_experiment_items_in_image(args):
     out_dir = os.path.join(args.output, "screen_description_expts_items_in_image/")
