@@ -25,6 +25,7 @@ from detic.config import add_detic_config
 from detic.predictor import VisualizationDemo
 
 from sklearn.decomposition import PCA
+from sklearn.decomposition import IncrementalPCA
 from PIL import Image
 
 # constants
@@ -144,35 +145,38 @@ def save_predictions(args, out_dir):
         np.save('{}bboxes/{}.npy'.format(out_dir, counter), bboxes)
         np.save('{}pred_classes/{}.npy'.format(out_dir, counter), pred_classes)
 
-def get_image_bbox_embeddings(img, bboxes, args):
+def save_preprocessed_imgs(args, out_dir):
     if args.cpu:
         device="cpu"
     else:
         device = "cuda"
-    model, preprocess = clip.load('ViT-B/32', device)
-    img_features_lst = []
-    plt.imsave('img.jpg', img)
-    
-    for bbox in bboxes:
-        x1, y1, x2, y2 = bbox.astype(int)
+    _, preprocess = clip.load('ViT-B/32', device)
+
+    if os.path.exists('{}preprocessed_imgs/'.format(out_dir)):
+        shutil.rmtree('{}preprocessed_imgs/'.format(out_dir))
+    os.makedirs('{}preprocessed_imgs/'.format(out_dir))
+
+    for img_counter in range(len(os.listdir(args.input+'pixels/'))):
+        print(img_counter)
+        img_path = '{}.jpg'.format(img_counter)
+        img = read_image(args.input+'pixels/' + img_path, format="RGB")
+
+        bboxes = np.load('{}bboxes/{}.npy'.format(out_dir, img_counter))
+
+        for bbox_counter in range(len(bboxes)):
+            bbox = bboxes[bbox_counter]
+            x1, y1, x2, y2 = bbox.astype(int)
+            
+            # crop boxes from images
+            cropped = img[y1:y2, x1:x2]
+
+            # encode images
+            cropped = Image.fromarray(np.uint8(cropped)).convert('RGB')
+            # preprocess imgs
+            preprocessed_img = preprocess(cropped).unsqueeze(0).to(device).cpu().numpy()
+            
+            np.save('{}preprocessed_imgs/{}_{}.npy'.format(out_dir, img_counter, bbox_counter), preprocessed_img)
         
-        # crop boxes from images
-        cropped = img[y1:y2, x1:x2]
-
-        # encode images
-        cropped = Image.fromarray(np.uint8(cropped)).convert('RGB')
-        # preprocess imgs
-        preprocessed_img = preprocess(cropped).unsqueeze(0).to(device)
-
-        print(type(preprocessed_img))
-        
-        #img_features = model.encode_image(preprocessed_img)
-        #img_features /= img_features.norm(dim=-1, keepdim=True)
-        #img_features_lst.append(img_features.detach().cpu().numpy().flatten())
-
-        
-    return img_features_lst
-
 def get_correct_and_total(pred_classes, labels, vocab_dict):
     correct = 0
     for i in range(len(pred_classes)):
@@ -182,6 +186,8 @@ def get_correct_and_total(pred_classes, labels, vocab_dict):
     return correct, len(pred_classes)
 
 def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name = 'PCA'):
+    #IncrementalPCA(n_components=2, batch_size = 10000)
+
     out_dir = os.path.join(args.output, "screen_description_expts_all_items/")
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
@@ -196,42 +202,60 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
     args.custom_vocabulary = ','.join(vocab)
     vocab_dict = {i:label for i, label in enumerate(args.custom_vocabulary.split(','))}
     
-    save_predictions(args, out_dir)
+    #save_predictions(args, out_dir)
+    #save_preprocessed_imgs(args, out_dir)
 
     correct, total = 0, 0
-    img_embeddings = []
 
-    for counter in range(len(os.listdir(args.input+'pixels/'))):
-        img_path = '{}.jpg'.format(counter)
-        img = read_image(args.input+'pixels/' + img_path, format="RGB")
+    #for counter in range(len(os.listdir(args.input+'pixels/'))):
+    #    pred_classes = np.load('{}pred_classes/{}.npy'.format(out_dir, counter))
+    
+    if args.cpu:
+        device="cpu"
+    else:
+        device = "cuda"
 
-        bboxes = np.load('{}bboxes/{}.npy'.format(out_dir, counter))
-        pred_classes = np.load('{}pred_classes/{}.npy'.format(out_dir, counter))
+    model, _ = clip.load('ViT-B/32', device)
+    img_features_lst = np.array([])
+    for counter, filename in enumerate(os.scandir('{}preprocessed_imgs/'.format(out_dir))):
+        preprocessed_img = np.load(filename)
+        img_features = model.encode_image(torch.tensor(preprocessed_img).to(device))
+        img_features = torch.nn.functional.normalize(img_features, p=2.0, dim = 1)
+        if len(img_features_lst) > 1:
+            img_features_lst = np.vstack([img_features_lst, img_features.detach().cpu().numpy().flatten()])
+        else:
+            img_features_lst = img_features.detach().cpu().numpy().flatten()
+        '''
+        if counter > 100000000 and counter % 1000 == 0:
+            print(counter)
+            dim_red.partial_fit(img_features_lst)
+            img_features_lst = []
+        '''
+    
+    '''
+    # calculate acuracy
+    screen_description_path = '{}.npy'.format(counter)
+    descriptions = np.load(args.input+'screen_descriptions/' + screen_description_path)
 
-        img_embeddings += get_image_bbox_embeddings(img, bboxes, args)
+    labels = get_bboxes_ground_truth_labels(bboxes, descriptions)
 
-        # calculate acuracy
-        screen_description_path = '{}.npy'.format(counter)
-        descriptions = np.load(args.input+'screen_descriptions/' + screen_description_path)
-
-        labels = get_bboxes_ground_truth_labels(bboxes, descriptions)
-
-        new_correct, new_total = get_correct_and_total(pred_classes, labels, vocab_dict)
-        correct += new_correct
-        total += new_total
+    new_correct, new_total = get_correct_and_total(pred_classes, labels, vocab_dict)
+    correct += new_correct
+    total += new_total
+    '''
 
     # perform dimensionality reduction
-    reduced_img_features_lst = dim_red.fit_transform(np.array(img_embeddings))
-    reduced_img_features_lst = np.array(reduced_img_features_lst)
+    reduced_img_features_lst = dim_red.fit_transform(img_features_lst)
 
     # plot embedding spaces color-coded by features
     plt.figure()
-    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes)
-    plt.colorbar()
-    plt.savefig('embedding_plots/pred_classes.png'.format(dim_red_name))
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1]) #c = pred_classes
+    #plt.colorbar()
+    plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
 
     # plot text embeddings
     
+    # calculate accuracy
     print('Accuracy:', correct/total)
 
 def screen_description_experiment_items_in_image(args):
