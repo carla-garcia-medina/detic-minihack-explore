@@ -6,6 +6,9 @@ import numpy as np
 import os
 import sys
 import shutil
+import matplotlib.pyplot as plt
+import clip
+import torch
 
 from detectron2.config import get_cfg
 from detectron2.data.detection_utils import read_image
@@ -20,6 +23,9 @@ from centernet.config import add_centernet_config
 from detic.config import add_detic_config
 
 from detic.predictor import VisualizationDemo
+
+from sklearn.decomposition import PCA
+from PIL import Image
 
 # constants
 WINDOW_NAME = "Detic"
@@ -97,18 +103,75 @@ def get_parser():
     )
     return parser
 
-def get_bboxes_labels(bboxes, labels_mtrx):
-    # 112, 320
+def get_vocab(args):
+    vocab = set([])
+        
+    for counter in range(len(os.listdir(args.input+'pixels/'))):
+        for row in np.load('{}screen_descriptions/{}.npy'.format(args.input, counter)).reshape(1659, 80):
+            description = ''.join([chr(hex) for hex in row if hex>0])
+            if len(description) > 0:
+                vocab.add(description)
+    
+    return vocab
+
+def get_bboxes_ground_truth_labels(bboxes, labels_mtrx):
     labels = []
     for bbox in bboxes:
         x1, y1, x2, y2 = bbox
         x = int((x1+x2)/2)
         y = int((y1+y2)/2)
         label_mtrx = labels_mtrx[int(y/16), int(x/16)]
-        description = ''.join([chr(hex) for hex in label_mtrx if hex>0])
-        labels.append(description)
+        label = ''.join([chr(hex) for hex in label_mtrx if hex>0])
+        labels.append(label)
 
     return labels
+
+def save_predictions(args, out_dir):
+    cfg = setup_cfg(args)
+    demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
+
+    os.makedirs('{}bboxes/'.format(out_dir))
+    os.makedirs('{}pred_classes/'.format(out_dir))
+
+    for counter in range(len(os.listdir(args.input+'pixels/'))):
+        img_path = '{}.jpg'.format(counter)
+        img = read_image(args.input+'pixels/' + img_path, format="RGB")
+
+        predictions, _ = demo.run_on_image(img)
+        bboxes = predictions['instances'].pred_boxes.tensor.cpu().numpy()
+        pred_classes = predictions['instances'].pred_classes.cpu().numpy()
+
+        np.save('{}bboxes/{}.npy'.format(out_dir, counter), bboxes)
+        np.save('{}pred_classes/{}.npy'.format(out_dir, counter), pred_classes)
+
+def get_image_bbox_embeddings(img, bboxes, args):
+    if args.cpu:
+        device="cpu"
+    else:
+        device = "cuda"
+    model, preprocess = clip.load('ViT-B/32', device)
+    img_features_lst = []
+    plt.imsave('img.jpg', img)
+    
+    for bbox in bboxes:
+        x1, y1, x2, y2 = bbox.astype(int)
+        
+        # crop boxes from images
+        cropped = img[y1:y2, x1:x2]
+
+        # encode images
+        cropped = Image.fromarray(np.uint8(cropped)).convert('RGB')
+        # preprocess imgs
+        preprocessed_img = preprocess(cropped).unsqueeze(0).to(device)
+
+        print(type(preprocessed_img))
+        
+        #img_features = model.encode_image(preprocessed_img)
+        #img_features /= img_features.norm(dim=-1, keepdim=True)
+        #img_features_lst.append(img_features.detach().cpu().numpy().flatten())
+
+        
+    return img_features_lst
 
 def get_correct_and_total(pred_classes, labels, vocab_dict):
     correct = 0
@@ -118,20 +181,13 @@ def get_correct_and_total(pred_classes, labels, vocab_dict):
 
     return correct, len(pred_classes)
 
-def screen_description_experiment_all_items(args):
+def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name = 'PCA'):
     out_dir = os.path.join(args.output, "screen_description_expts_all_items/")
-    if os.path.exists(out_dir):
-        shutil.rmtree(out_dir)
-    os.makedirs(out_dir)
-    vocab = set([])
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    
+    #vocab = get_vocab(args)
 
-    '''
-    for counter in range(len(os.listdir(args.input+'pixels/'))):
-        for row in np.load('{}screen_descriptions/{}.npy'.format(args.input, counter)).reshape(1659, 80):
-            description = ''.join([chr(hex) for hex in row if hex>0])
-            if len(description) > 0:
-                vocab.add(description)
-    '''
     vocab = {'grid bug', 'a kobold corpse', 'a scroll labeled LOREM IPSUM', 'water', 'lichen', 'floor of a room', 'goblin', 'a boulder', 'dark part of a room', 'kobold zombie', 'sewer rat', 'newt', 'a goblin corpse', 'human rogue called Agent', 'staircase up', 'fox', 'jackal', 'a newt corpse', 'a lichen corpse'}
     print(len(vocab))
     print(vocab)
@@ -139,25 +195,42 @@ def screen_description_experiment_all_items(args):
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
     vocab_dict = {i:label for i, label in enumerate(args.custom_vocabulary.split(','))}
-    cfg = setup_cfg(args)
-    demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
     
+    save_predictions(args, out_dir)
+
     correct, total = 0, 0
+    img_embeddings = []
+
     for counter in range(len(os.listdir(args.input+'pixels/'))):
         img_path = '{}.jpg'.format(counter)
+        img = read_image(args.input+'pixels/' + img_path, format="RGB")
+
+        bboxes = np.load('{}bboxes/{}.npy'.format(out_dir, counter))
+        pred_classes = np.load('{}pred_classes/{}.npy'.format(out_dir, counter))
+
+        img_embeddings += get_image_bbox_embeddings(img, bboxes, args)
+
+        # calculate acuracy
         screen_description_path = '{}.npy'.format(counter)
-        
-        img = read_image(args.input+'pixels/' + img_path, format="BGR")
-        labels = np.load(args.input+'screen_descriptions/' + screen_description_path)
+        descriptions = np.load(args.input+'screen_descriptions/' + screen_description_path)
 
-        predictions, _ = demo.run_on_image(img)
-        bboxes = predictions['instances'].pred_boxes
-        pred_classess = predictions['instances'].pred_classes.cpu().numpy()
-        labels = get_bboxes_labels(bboxes, labels)
+        labels = get_bboxes_ground_truth_labels(bboxes, descriptions)
 
-        new_correct, new_total = get_correct_and_total(pred_classess, labels, vocab_dict)
+        new_correct, new_total = get_correct_and_total(pred_classes, labels, vocab_dict)
         correct += new_correct
         total += new_total
+
+    # perform dimensionality reduction
+    reduced_img_features_lst = dim_red.fit_transform(np.array(img_embeddings))
+    reduced_img_features_lst = np.array(reduced_img_features_lst)
+
+    # plot embedding spaces color-coded by features
+    plt.figure()
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes)
+    plt.colorbar()
+    plt.savefig('embedding_plots/pred_classes.png'.format(dim_red_name))
+
+    # plot text embeddings
     
     print('Accuracy:', correct/total)
 
@@ -242,7 +315,7 @@ def main():
     setup_logger(name="fvcore")
     logger = setup_logger()
     logger.info("Arguments: " + str(args))
-    
+    os.makedirs('embedding_plot', exist_ok=True)
     screen_description_experiment_all_items(args)
     #screen_description_experiment_items_in_image(args)
     #all_message_experiment(args)
