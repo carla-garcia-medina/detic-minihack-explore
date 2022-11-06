@@ -176,7 +176,26 @@ def save_preprocessed_imgs(args, out_dir):
             preprocessed_img = preprocess(cropped).unsqueeze(0).to(device).cpu().numpy()
             
             np.save('{}preprocessed_imgs/{}_{}.npy'.format(out_dir, img_counter, bbox_counter), preprocessed_img)
-        
+
+def save_img_features(args, out_dir):
+    if args.cpu:
+        device="cpu"
+    else:
+        device = "cuda"
+
+    if os.path.exists('{}img_features'.format(out_dir)):
+        shutil.rmtree('{}img_features'.format(out_dir))
+    os.makedirs('{}img_features'.format(out_dir))
+
+    model, _ = clip.load('ViT-B/32', device)
+
+    for filename in os.scandir('{}preprocessed_imgs/'.format(out_dir)):
+        preprocessed_img = np.load(filename)
+        img_features = model.encode_image(torch.tensor(preprocessed_img).to(device))
+        img_features = torch.nn.functional.normalize(img_features, p=2.0, dim = 1)
+        img_features = img_features.detach().cpu().numpy().flatten()
+        np.save('{}img_features/{}'.format(out_dir, filename.name), img_features)
+
 def get_correct_and_total(pred_classes, labels, vocab_dict):
     correct = 0
     for i in range(len(pred_classes)):
@@ -201,37 +220,44 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
     vocab_dict = {i:label for i, label in enumerate(args.custom_vocabulary.split(','))}
+
+    # plot text embeddings
     
-    #save_predictions(args, out_dir)
-    #save_preprocessed_imgs(args, out_dir)
+    '''
+    save_predictions(args, out_dir)
+    save_preprocessed_imgs(args, out_dir)
+    save_img_features(args, out_dir)
+    '''
 
     correct, total = 0, 0
+    
+    img_features_lst = np.array([])
+    for filename in os.scandir('{}img_features/'.format(out_dir)):
+        img_features = np.load(filename)
+        if len(img_features_lst) > 1:
+            img_features_lst = np.vstack([img_features_lst, img_features])
+        else:
+            img_features_lst = img_features
+    
+    # perform dimensionality reduction
+    reduced_img_features_lst = dim_red.fit_transform(img_features_lst)
 
+    if os.path.exists('{}embedding_plots'.format(out_dir)):
+        shutil.rmtree('{}embedding_plots'.format(out_dir))
+    os.makedirs('{}embedding_plots'.format(out_dir))
+
+    # plot embedding spaces color-coded by features
+    plt.figure()
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1]) #c = pred_classes
+    plt.colorbar()
+    plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
+    
     #for counter in range(len(os.listdir(args.input+'pixels/'))):
     #    pred_classes = np.load('{}pred_classes/{}.npy'.format(out_dir, counter))
-    
-    if args.cpu:
-        device="cpu"
-    else:
-        device = "cuda"
 
-    model, _ = clip.load('ViT-B/32', device)
-    img_features_lst = np.array([])
-    for counter, filename in enumerate(os.scandir('{}preprocessed_imgs/'.format(out_dir))):
-        preprocessed_img = np.load(filename)
-        img_features = model.encode_image(torch.tensor(preprocessed_img).to(device))
-        img_features = torch.nn.functional.normalize(img_features, p=2.0, dim = 1)
-        if len(img_features_lst) > 1:
-            img_features_lst = np.vstack([img_features_lst, img_features.detach().cpu().numpy().flatten()])
-        else:
-            img_features_lst = img_features.detach().cpu().numpy().flatten()
-        '''
-        if counter > 100000000 and counter % 1000 == 0:
-            print(counter)
-            dim_red.partial_fit(img_features_lst)
-            img_features_lst = []
-        '''
-    
+    # calculate accuracy
+    #print('Accuracy:', correct/total)
+
     '''
     # calculate acuracy
     screen_description_path = '{}.npy'.format(counter)
@@ -243,20 +269,6 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
     correct += new_correct
     total += new_total
     '''
-
-    # perform dimensionality reduction
-    reduced_img_features_lst = dim_red.fit_transform(img_features_lst)
-
-    # plot embedding spaces color-coded by features
-    plt.figure()
-    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1]) #c = pred_classes
-    #plt.colorbar()
-    plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
-
-    # plot text embeddings
-    
-    # calculate accuracy
-    print('Accuracy:', correct/total)
 
 def screen_description_experiment_items_in_image(args):
     out_dir = os.path.join(args.output, "screen_description_expts_items_in_image/")
