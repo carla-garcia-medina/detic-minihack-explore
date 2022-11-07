@@ -286,14 +286,26 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
     os.makedirs('{}embedding_plots'.format(out_dir))
 
     # plot embedding spaces color-coded by features
-    plt.figure(figsize=(50, 50), dpi=1000)
+    plt.figure(figsize=(20, 20), dpi=1000)
     plt.ylim([-0.5, 0.5])
-    plt.xlim([-0.5, 1])
+    plt.xlim([-0.4, 0.7])
     for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
-        plt.text(x, y, prompt)
+        plt.text(x, y, prompt, fontsize = 20)
     plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 10)
+    plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 10)
     plt.colorbar()
     plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
+
+    plt.figure(figsize=(10, 10), dpi=1000)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 20)
+    plt.colorbar()
+    plt.savefig('{}embedding_plots/pred_classes_imgs.png'.format(out_dir, dim_red_name))
+
+    plt.figure(figsize=(10, 10), dpi=1000)
+    for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
+        plt.text(x, y, prompt, fontsize = 12)
+    plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 20)
+    plt.savefig('{}embedding_plots/pred_classes_prompts.png'.format(out_dir, dim_red_name))
 
     # calculate acuracy
     correct, total = 0, 0
