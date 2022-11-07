@@ -115,17 +115,33 @@ def get_vocab(args):
     
     return vocab
 
-def get_bboxes_ground_truth_labels(bboxes, labels_mtrx):
-    labels = []
-    for bbox in bboxes:
-        x1, y1, x2, y2 = bbox
-        x = int((x1+x2)/2)
-        y = int((y1+y2)/2)
-        label_mtrx = labels_mtrx[int(y/16), int(x/16)]
-        label = ''.join([chr(hex) for hex in label_mtrx if hex>0])
-        labels.append(label)
+def save_bboxes_ground_truth_labels(args, out_dir):
+    if os.path.exists('{}bbox_ground_truth_labels'.format(out_dir)):
+        shutil.rmtree('{}bbox_ground_truth_labels'.format(out_dir))
+    os.makedirs('{}bbox_ground_truth_labels'.format(out_dir))
+    if os.path.exists('{}bbox_pred_classes'.format(out_dir)):
+        shutil.rmtree('{}bbox_pred_classes'.format(out_dir))
+    os.makedirs('{}bbox_pred_classes'.format(out_dir))
 
-    return labels
+    label_to_i_dict = {label:i for i, label in enumerate(args.custom_vocabulary.split(','))}
+    label_to_i_dict[''] = len(args.custom_vocabulary.split(','))
+
+    for filename in os.scandir('{}bboxes'.format(out_dir)):
+        img_bboxes = np.load('{}bboxes/{}'.format(out_dir, filename.name))
+        img_pred_classes = np.load('{}pred_classes/{}'.format(out_dir, filename.name))
+        labels_mtrx = np.load('{}screen_descriptions/{}'.format(args.input, filename.name))
+        for counter in range(len(img_bboxes)):
+            bbox = img_bboxes[counter]
+            pred_class = img_pred_classes[counter]
+            x1, y1, x2, y2 = bbox
+            x = int((x1+x2)/2)
+            y = int((y1+y2)/2)
+            label_arr = labels_mtrx[int(y/16), int(x/16)]
+            ground_truth_label = label_to_i_dict[''.join([chr(hex) for hex in label_arr if hex>0])]
+            ground_truth_label = np.array(ground_truth_label)
+        
+            np.save('{}bbox_ground_truth_labels/{}_{}.npy'.format(out_dir, filename.name.split('/')[-1][:-4], counter), ground_truth_label)
+            np.save('{}bbox_pred_classes/{}_{}.npy'.format(out_dir, filename.name.split('/')[-1][:-4], counter), pred_class)
 
 def save_predictions(args, out_dir):
     cfg = setup_cfg(args)
@@ -196,11 +212,12 @@ def save_img_features(args, out_dir):
         img_features = img_features.detach().cpu().numpy().flatten()
         np.save('{}img_features/{}'.format(out_dir, filename.name), img_features)
 
-def get_correct_and_total(pred_classes, labels, vocab_dict):
+def get_correct_and_total(pred_classes, labels):
     correct = 0
     for i in range(len(pred_classes)):
-        if vocab_dict[pred_classes[i]] == labels[i]:
+        if labels[i] == int(pred_classes[i]):
             correct += 1
+        print(pred_classes[i], labels[i])
 
     return correct, len(pred_classes)
 
@@ -219,56 +236,74 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
 
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
-    vocab_dict = {i:label for i, label in enumerate(args.custom_vocabulary.split(','))}
-
+    
     # plot text embeddings
-    
-    '''
-    save_predictions(args, out_dir)
-    save_preprocessed_imgs(args, out_dir)
-    save_img_features(args, out_dir)
-    '''
 
-    correct, total = 0, 0
+    # tokenize experiment prompts
+    if args.cpu:
+        device="cpu"
+    else:
+        device = "cuda"
+
+    model, _ = clip.load('ViT-B/32', device)
+
+    prompts = list(vocab)
     
-    img_features_lst = np.array([])
-    for filename in os.scandir('{}img_features/'.format(out_dir)):
+    tokenized_prompts = [clip.tokenize(prompt).to(device) for prompt in prompts]
+
+    prompt_features_lst = []
+    for tp in tokenized_prompts:
+        with torch.no_grad():
+            prompt_features = model.encode_text(tp) # pass tokens through CLIP encoder to get prompt features
+            prompt_features /= prompt_features.norm(dim=-1, keepdim=True) # normalize features
+            for pf in prompt_features:
+                prompt_features_lst.append(pf.cpu().data.numpy())
+
+    #save_predictions(args, out_dir)
+    #save_preprocessed_imgs(args, out_dir)
+    #save_img_features(args, out_dir)
+    #save_bboxes_ground_truth_labels(args, out_dir)
+            
+    for counter, filename in enumerate(os.scandir('{}img_features/'.format(out_dir))):
         img_features = np.load(filename)
-        if len(img_features_lst) > 1:
+        gt_label = np.load('{}bbox_ground_truth_labels/{}'.format(out_dir, filename.name))
+        pred_class = np.load('{}bbox_pred_classes/{}'.format(out_dir, filename.name))
+        if counter > 0:
             img_features_lst = np.vstack([img_features_lst, img_features])
+            gt_labels_lst = np.vstack([gt_labels_lst, gt_label])
+            pred_classes_lst = np.vstack([pred_classes_lst, pred_class])
         else:
             img_features_lst = img_features
+            gt_labels_lst = np.array([gt_label])
+            pred_classes_lst = np.array([pred_class])
     
     # perform dimensionality reduction
-    reduced_img_features_lst = dim_red.fit_transform(img_features_lst)
+    reduced_prompt_features_lst = dim_red.fit_transform(prompt_features_lst)
+    reduced_img_features_lst = dim_red.transform(img_features_lst)
 
     if os.path.exists('{}embedding_plots'.format(out_dir)):
         shutil.rmtree('{}embedding_plots'.format(out_dir))
     os.makedirs('{}embedding_plots'.format(out_dir))
 
     # plot embedding spaces color-coded by features
-    plt.figure()
-    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1]) #c = pred_classes
+    plt.figure(figsize=(50, 50), dpi=1000)
+    plt.ylim([-0.5, 0.5])
+    plt.xlim([-0.5, 1])
+    for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
+        plt.text(x, y, prompt)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 10)
     plt.colorbar()
     plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
-    
-    #for counter in range(len(os.listdir(args.input+'pixels/'))):
-    #    pred_classes = np.load('{}pred_classes/{}.npy'.format(out_dir, counter))
 
-    # calculate accuracy
-    #print('Accuracy:', correct/total)
-
-    '''
     # calculate acuracy
-    screen_description_path = '{}.npy'.format(counter)
-    descriptions = np.load(args.input+'screen_descriptions/' + screen_description_path)
+    correct, total = 0, 0
 
-    labels = get_bboxes_ground_truth_labels(bboxes, descriptions)
-
-    new_correct, new_total = get_correct_and_total(pred_classes, labels, vocab_dict)
+    new_correct, new_total = get_correct_and_total(pred_classes_lst.flatten(), gt_labels_lst.flatten())
     correct += new_correct
     total += new_total
-    '''
+    print(correct)
+    print(total)
+    print('Accuracy:', correct/total)
 
 def screen_description_experiment_items_in_image(args):
     out_dir = os.path.join(args.output, "screen_description_expts_items_in_image/")
