@@ -104,7 +104,7 @@ def get_parser():
     )
     return parser
 
-def get_vocab(args):
+def get_descriptions_vocab(args):
     vocab = set([])
         
     for counter in range(len(os.listdir(args.input+'pixels/'))):
@@ -115,7 +115,16 @@ def get_vocab(args):
     
     return vocab
 
-def save_bboxes_ground_truth_labels(args, out_dir):
+def get_messages_vocab(args):
+    vocab = set([])
+    for counter in range(len(os.listdir(args.input+'pixels/'))):
+        message = ''.join([chr(hex) for hex in np.load('{}messages/{}.npy'.format(args.input, counter)) if hex>0])
+        if len(message) > 0:
+            vocab.add(message)
+
+    return vocab
+
+def save_bboxes_ground_truth_labels(args, out_dir, labels_dir):
     if os.path.exists('{}bbox_ground_truth_labels'.format(out_dir)):
         shutil.rmtree('{}bbox_ground_truth_labels'.format(out_dir))
     os.makedirs('{}bbox_ground_truth_labels'.format(out_dir))
@@ -125,19 +134,24 @@ def save_bboxes_ground_truth_labels(args, out_dir):
 
     label_to_i_dict = {label:i for i, label in enumerate(args.custom_vocabulary.split(','))}
     label_to_i_dict[''] = len(args.custom_vocabulary.split(','))
+    print(label_to_i_dict)
 
     for filename in os.scandir('{}bboxes'.format(out_dir)):
         img_bboxes = np.load('{}bboxes/{}'.format(out_dir, filename.name))
         img_pred_classes = np.load('{}pred_classes/{}'.format(out_dir, filename.name))
-        labels_mtrx = np.load('{}screen_descriptions/{}'.format(args.input, filename.name))
+        labels_mtrx = np.load('{}{}/{}'.format(args.input, labels_dir, filename.name))
         for counter in range(len(img_bboxes)):
             bbox = img_bboxes[counter]
             pred_class = img_pred_classes[counter]
-            x1, y1, x2, y2 = bbox
-            x = int((x1+x2)/2)
-            y = int((y1+y2)/2)
-            label_arr = labels_mtrx[int(y/16), int(x/16)]
-            ground_truth_label = label_to_i_dict[''.join([chr(hex) for hex in label_arr if hex>0])]
+            if labels_dir == 'screen_descriptions':
+                x1, y1, x2, y2 = bbox
+                x = int((x1+x2)/2)
+                y = int((y1+y2)/2)
+                label_arr = labels_mtrx[int(y/16), int(x/16)]
+            else:
+                label_arr = labels_mtrx
+            string = ''.join([chr(hex) for hex in label_arr if hex>0])
+            ground_truth_label = label_to_i_dict[string.split(',')[0]]
             ground_truth_label = np.array(ground_truth_label)
         
             np.save('{}bbox_ground_truth_labels/{}_{}.npy'.format(out_dir, filename.name.split('/')[-1][:-4], counter), ground_truth_label)
@@ -228,7 +242,7 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     
-    #vocab = get_vocab(args)
+    #vocab = get_descriptions_vocab(args)
 
     vocab = {'grid bug', 'a kobold corpse', 'a scroll labeled LOREM IPSUM', 'water', 'lichen', 'floor of a room', 'goblin', 'a boulder', 'dark part of a room', 'kobold zombie', 'sewer rat', 'newt', 'a goblin corpse', 'human rogue called Agent', 'staircase up', 'fox', 'jackal', 'a newt corpse', 'a lichen corpse'}
     print(len(vocab))
@@ -236,8 +250,6 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
 
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
-    
-    # plot text embeddings
 
     # tokenize experiment prompts
     if args.cpu:
@@ -262,7 +274,7 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
     #save_predictions(args, out_dir)
     #save_preprocessed_imgs(args, out_dir)
     #save_img_features(args, out_dir)
-    #save_bboxes_ground_truth_labels(args, out_dir)
+    #save_bboxes_ground_truth_labels(args, out_dir, 'screen_descriptions')
             
     for counter, filename in enumerate(os.scandir('{}img_features/'.format(out_dir))):
         img_features = np.load(filename)
@@ -342,7 +354,101 @@ def screen_description_experiment_items_in_image(args):
         out_filename = os.path.join(out_dir, os.path.basename(img_path))
         visualized_output.save(out_filename)
 
-def all_message_experiment(args):
+def all_message_experiment(args, dim_red = PCA(2), dim_red_name = 'PCA'):
+    out_dir = os.path.join(args.output, "all_message_experiment/")
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    
+    vocab = get_messages_vocab(args)
+
+    #vocab = {'grid bug', 'a kobold corpse', 'a scroll labeled LOREM IPSUM', 'water', 'lichen', 'floor of a room', 'goblin', 'a boulder', 'dark part of a room', 'kobold zombie', 'sewer rat', 'newt', 'a goblin corpse', 'human rogue called Agent', 'staircase up', 'fox', 'jackal', 'a newt corpse', 'a lichen corpse'}
+    print(len(vocab))
+    print(vocab)
+
+    args.vocabulary = 'custom'
+    args.custom_vocabulary = ','.join(vocab)
+
+    # tokenize experiment prompts
+    if args.cpu:
+        device="cpu"
+    else:
+        device = "cuda"
+
+    model, _ = clip.load('ViT-B/32', device)
+
+    prompts = list(vocab)
+    
+    tokenized_prompts = [clip.tokenize(prompt).to(device) for prompt in prompts]
+
+    prompt_features_lst = []
+    for tp in tokenized_prompts:
+        with torch.no_grad():
+            prompt_features = model.encode_text(tp) # pass tokens through CLIP encoder to get prompt features
+            prompt_features /= prompt_features.norm(dim=-1, keepdim=True) # normalize features
+            for pf in prompt_features:
+                prompt_features_lst.append(pf.cpu().data.numpy())
+
+    #save_predictions(args, out_dir)
+    #save_preprocessed_imgs(args, out_dir)
+    #save_img_features(args, out_dir)
+    #save_bboxes_ground_truth_labels(args, out_dir, 'messages')
+            
+    for counter, filename in enumerate(os.scandir('{}img_features/'.format(out_dir))):
+        img_features = np.load(filename)
+        gt_label = np.load('{}bbox_ground_truth_labels/{}'.format(out_dir, filename.name))
+        pred_class = np.load('{}bbox_pred_classes/{}'.format(out_dir, filename.name))
+        if counter > 0:
+            img_features_lst = np.vstack([img_features_lst, img_features])
+            gt_labels_lst = np.vstack([gt_labels_lst, gt_label])
+            pred_classes_lst = np.vstack([pred_classes_lst, pred_class])
+        else:
+            img_features_lst = img_features
+            gt_labels_lst = np.array([gt_label])
+            pred_classes_lst = np.array([pred_class])
+    
+    # perform dimensionality reduction
+    reduced_prompt_features_lst = dim_red.fit_transform(prompt_features_lst)
+    reduced_img_features_lst = dim_red.transform(img_features_lst)
+
+    if os.path.exists('{}embedding_plots'.format(out_dir)):
+        shutil.rmtree('{}embedding_plots'.format(out_dir))
+    os.makedirs('{}embedding_plots'.format(out_dir))
+
+    # plot embedding spaces color-coded by features
+    plt.figure(figsize=(15, 20), dpi=1000)
+    plt.ylim([-0.5, 0.5])
+    plt.xlim([-0.4, 0.7])
+    for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
+        plt.text(x, y, prompt, fontsize = 12)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 10)
+    plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 10)
+    plt.colorbar()
+    plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
+
+    plt.figure(figsize=(15, 20), dpi=1000)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 20)
+    plt.colorbar()
+    plt.savefig('{}embedding_plots/pred_classes_imgs.png'.format(out_dir, dim_red_name))
+
+    plt.figure(figsize=(15, 20), dpi=1000)
+    for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
+        plt.text(x, y, prompt, fontsize = 6)
+    plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 20)
+    plt.savefig('{}embedding_plots/pred_classes_prompts.png'.format(out_dir, dim_red_name))
+
+    # calculate acuracy
+    correct, total = 0, 0
+
+    new_correct, new_total = get_correct_and_total(pred_classes_lst.flatten(), gt_labels_lst.flatten())
+    correct += new_correct
+    total += new_total
+    print(correct)
+    print(total)
+    print('Accuracy:', correct/total)
+
+
+
+    '''
     out_dir = os.path.join(args.output, "all_message_experiment/")
     if os.path.exists(out_dir):
         shutil.rmtree(out_dir)
@@ -368,6 +474,8 @@ def all_message_experiment(args):
         #print(predictions)
         out_filename = os.path.join(out_dir, os.path.basename(img_path))
         visualized_output.save(out_filename)
+
+    '''
 
 def corresponding_message_experiment(args):
     out_dir = os.path.join(args.output, "corresponding_message_experiment/")
@@ -399,9 +507,9 @@ def main():
     logger = setup_logger()
     logger.info("Arguments: " + str(args))
     os.makedirs('embedding_plot', exist_ok=True)
-    screen_description_experiment_all_items(args)
+    #screen_description_experiment_all_items(args)
     #screen_description_experiment_items_in_image(args)
-    #all_message_experiment(args)
+    all_message_experiment(args)
     #corresponding_message_experiment(args)
     #lvis_experiment(args)
 
