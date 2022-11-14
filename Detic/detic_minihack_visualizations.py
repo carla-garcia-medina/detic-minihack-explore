@@ -134,6 +134,7 @@ def save_bboxes_ground_truth_labels(args, out_dir, labels_dir):
 
     label_to_i_dict = {label:i for i, label in enumerate(args.custom_vocabulary.split(','))}
     label_to_i_dict[''] = len(args.custom_vocabulary.split(','))
+    print(label_to_i_dict)
 
     for filename in os.scandir('{}bboxes'.format(out_dir)):
         img_bboxes = np.load('{}bboxes/{}'.format(out_dir, filename.name))
@@ -508,7 +509,7 @@ def main():
     os.makedirs('embedding_plot', exist_ok=True)
     screen_description_experiment_all_items(args)
     #screen_description_experiment_items_in_image(args)
-    all_message_experiment(args)
+    #all_message_experiment(args)
     #corresponding_message_experiment(args)
     #lvis_experiment(args)
 
