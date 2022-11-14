@@ -134,7 +134,6 @@ def save_bboxes_ground_truth_labels(args, out_dir, labels_dir):
 
     label_to_i_dict = {label:i for i, label in enumerate(args.custom_vocabulary.split(','))}
     label_to_i_dict[''] = len(args.custom_vocabulary.split(','))
-    print(label_to_i_dict)
 
     for filename in os.scandir('{}bboxes'.format(out_dir)):
         img_bboxes = np.load('{}bboxes/{}'.format(out_dir, filename.name))
@@ -187,7 +186,6 @@ def save_preprocessed_imgs(args, out_dir):
     os.makedirs('{}preprocessed_imgs/'.format(out_dir))
 
     for img_counter in range(len(os.listdir(args.input+'pixels/'))):
-        print(img_counter)
         img_path = '{}.jpg'.format(img_counter)
         img = read_image(args.input+'pixels/' + img_path, format="RGB")
 
@@ -231,7 +229,6 @@ def get_correct_and_total(pred_classes, labels):
     for i in range(len(pred_classes)):
         if labels[i] == int(pred_classes[i]):
             correct += 1
-        print(pred_classes[i], labels[i])
 
     return correct, len(pred_classes)
 
@@ -274,7 +271,7 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
     #save_predictions(args, out_dir)
     #save_preprocessed_imgs(args, out_dir)
     #save_img_features(args, out_dir)
-    #save_bboxes_ground_truth_labels(args, out_dir, 'screen_descriptions')
+    save_bboxes_ground_truth_labels(args, out_dir, 'screen_descriptions')
             
     for counter, filename in enumerate(os.scandir('{}img_features/'.format(out_dir))):
         img_features = np.load(filename)
@@ -297,27 +294,29 @@ def screen_description_experiment_all_items(args, dim_red = PCA(2), dim_red_name
         shutil.rmtree('{}embedding_plots'.format(out_dir))
     os.makedirs('{}embedding_plots'.format(out_dir))
 
+    print(set(list(pred_classes_lst.flatten())))
+
     # plot embedding spaces color-coded by features
     plt.figure(figsize=(20, 20), dpi=1000)
     plt.ylim([-0.5, 0.5])
     plt.xlim([-0.4, 0.7])
     for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
         plt.text(x, y, prompt, fontsize = 20)
-    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 10)
     plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 10)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = gt_labels_lst, s = 10)
     plt.colorbar()
-    plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
+    plt.savefig('{}embedding_plots/gt_labels.png'.format(out_dir, dim_red_name))
 
     plt.figure(figsize=(10, 10), dpi=1000)
-    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 20)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = gt_labels_lst, s = 20)
     plt.colorbar()
-    plt.savefig('{}embedding_plots/pred_classes_imgs.png'.format(out_dir, dim_red_name))
+    plt.savefig('{}embedding_plots/gt_labels_imgs_.png'.format(out_dir, dim_red_name))
 
     plt.figure(figsize=(10, 10), dpi=1000)
     for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
         plt.text(x, y, prompt, fontsize = 12)
     plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 20)
-    plt.savefig('{}embedding_plots/pred_classes_prompts.png'.format(out_dir, dim_red_name))
+    plt.savefig('{}embedding_plots/gt_labels_prompts.png'.format(out_dir, dim_red_name))
 
     # calculate acuracy
     correct, total = 0, 0
@@ -391,7 +390,7 @@ def all_message_experiment(args, dim_red = PCA(2), dim_red_name = 'PCA'):
     #save_predictions(args, out_dir)
     #save_preprocessed_imgs(args, out_dir)
     #save_img_features(args, out_dir)
-    #save_bboxes_ground_truth_labels(args, out_dir, 'messages')
+    save_bboxes_ground_truth_labels(args, out_dir, 'messages')
             
     for counter, filename in enumerate(os.scandir('{}img_features/'.format(out_dir))):
         img_features = np.load(filename)
@@ -416,25 +415,25 @@ def all_message_experiment(args, dim_red = PCA(2), dim_red_name = 'PCA'):
 
     # plot embedding spaces color-coded by features
     plt.figure(figsize=(15, 20), dpi=1000)
-    plt.ylim([-0.5, 0.5])
+    plt.ylim([-0.4, 0.4])
     plt.xlim([-0.4, 0.7])
     for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
         plt.text(x, y, prompt, fontsize = 12)
-    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 10)
     plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 10)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = gt_labels_lst, s = 10)
     plt.colorbar()
-    plt.savefig('{}embedding_plots/pred_classes.png'.format(out_dir, dim_red_name))
+    plt.savefig('{}embedding_plots/gt_labels.png'.format(out_dir, dim_red_name))
 
     plt.figure(figsize=(15, 20), dpi=1000)
-    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = pred_classes_lst, s = 20)
+    plt.scatter(reduced_img_features_lst[:,0], reduced_img_features_lst[:,1], c = gt_labels_lst, s = 20)
     plt.colorbar()
-    plt.savefig('{}embedding_plots/pred_classes_imgs.png'.format(out_dir, dim_red_name))
+    plt.savefig('{}embedding_plots/gt_labels_imgs.png'.format(out_dir, dim_red_name))
 
-    plt.figure(figsize=(15, 20), dpi=1000)
+    plt.figure(figsize=(10, 10), dpi=1000)
     for x, y, prompt in zip(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], prompts):
-        plt.text(x, y, prompt, fontsize = 6)
+        plt.text(x, y, prompt, fontsize = 15)
     plt.scatter(reduced_prompt_features_lst[:,0], reduced_prompt_features_lst[:,1], c = 'r', s = 20)
-    plt.savefig('{}embedding_plots/pred_classes_prompts.png'.format(out_dir, dim_red_name))
+    plt.savefig('{}embedding_plots/gt_labels_prompts.png'.format(out_dir, dim_red_name))
 
     # calculate acuracy
     correct, total = 0, 0
@@ -507,7 +506,7 @@ def main():
     logger = setup_logger()
     logger.info("Arguments: " + str(args))
     os.makedirs('embedding_plot', exist_ok=True)
-    #screen_description_experiment_all_items(args)
+    screen_description_experiment_all_items(args)
     #screen_description_experiment_items_in_image(args)
     all_message_experiment(args)
     #corresponding_message_experiment(args)
