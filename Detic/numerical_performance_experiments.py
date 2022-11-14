@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import shutil
 
 def numIslands(self, grid):
     def dfs(grid, i, j):
@@ -22,9 +23,13 @@ def numIslands(self, grid):
     return count
 
 def convert_hex_to_words():
-    screen_descriptions_dir = 'minihack_datasets/MiniHack-River-Monster-v0/dataset_0/screen_descriptions'
-    word_screen_descriptions_dir = 'minihack_datasets/MiniHack-River-Monster-v0/dataset_0/word_screen_descriptions'
-        
+    screen_descriptions_dir = 'minihack_datasets/MiniHack-River-Monster-v0/dataset_0/screen_descriptions/'
+    word_screen_descriptions_dir = 'minihack_datasets/MiniHack-River-Monster-v0/dataset_0/word_screen_descriptions/'
+    
+    if os.path.exists(word_screen_descriptions_dir):
+        shutil.rmtree(word_screen_descriptions_dir)
+    os.makedirs(word_screen_descriptions_dir)
+
     for file in os.scandir(screen_descriptions_dir):
         matrix = np.load(file)
         word_matrix = np.chararray(matrix.shape)
