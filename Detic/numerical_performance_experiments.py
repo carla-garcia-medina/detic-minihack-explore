@@ -41,4 +41,3 @@ def convert_hex_to_words():
 
         np.save(word_screen_descriptions_dir+file.name, word_matrix)
 
-convert_hex_to_words()
