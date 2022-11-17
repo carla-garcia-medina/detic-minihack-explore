@@ -1,0 +1,1 @@
+{'', 'grid bug', 'lichen', 'a boulder', 'newt', 'jackal', 'a goblin corpse', 'sewer rat', 'dark part of a room', 'water', 'a newt corpse', 'kobold zombie', 'fox', 'a scroll labeled LOREM IPSUM', 'a lichen corpse', 'floor of a room', 'a kobold corpse', 'goblin', 'human rogue called Agent', 'staircase up'}

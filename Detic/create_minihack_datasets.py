@@ -31,33 +31,35 @@ def autocrop(image, threshold=0):
 
     return image
 
-def get_dataset(env_name, runs=1, num_screenshots=1000):
-    env = gym.make(env_name, observation_keys=("glyphs", "pixel", "message", "screen_descriptions"))
-    np.set_printoptions(threshold = np.inf)
+def get_dataset(env_list, num_screenshots=10000, generic_dir_name = 'numerical_expts'):
     
-    for run in range(runs):
+    np.set_printoptions(threshold = np.inf)
+
+    dataset_path = 'minihack_datasets/{0}/'.format(generic_dir_name) 
+    output_path = 'outputs'
+
+    if os.path.exists(dataset_path):
+        shutil.rmtree(dataset_path)
+    os.makedirs(dataset_path)
+    if os.path.exists(output_path):
+        shutil.rmtree(output_path)
+    os.makedirs(output_path)
+
+    pixels_path = dataset_path + 'pixels/'
+    glyphs_path = dataset_path + 'glyphs/'
+    messages_path = dataset_path + 'messages/'
+    screen_descriptions_paths = dataset_path + 'screen_descriptions/'
+
+    os.makedirs(pixels_path)
+    os.makedirs(glyphs_path)
+    os.makedirs(messages_path)
+    os.makedirs(screen_descriptions_paths)
+    
+    counter = 0
+    for env_name in env_list:
+        env = gym.make(env_name, observation_keys=("glyphs", "pixel", "message", "screen_descriptions"))
         env.reset()
-        counter = 0
-        dataset_path = 'minihack_datasets/{0}/dataset_{1}/'.format(env_name, run)
-        output_path = 'outputs'
-        if os.path.exists(dataset_path):
-            shutil.rmtree(dataset_path)
-        os.makedirs(dataset_path)
-        if os.path.exists(output_path):
-            shutil.rmtree(output_path)
-        os.makedirs(output_path)
-
-        pixels_path = dataset_path + 'pixels/'
-        glyphs_path = dataset_path + 'glyphs/'
-        messages_path = dataset_path + 'messages/'
-        screen_descriptions_paths = dataset_path + 'screen_descriptions/'
-
-        os.makedirs(pixels_path)
-        os.makedirs(glyphs_path)
-        os.makedirs(messages_path)
-        os.makedirs(screen_descriptions_paths)
-
-        for counter in range(num_screenshots):
+        for _ in range(num_screenshots):
             npy_path = '{}.npy'.format(counter)
             glyphs_file = open(glyphs_path + npy_path, "wb")
             messages_file = open(messages_path + npy_path, "wb")
@@ -76,15 +78,35 @@ def get_dataset(env_name, runs=1, num_screenshots=1000):
             np.save(glyphs_file, obs['glyphs'])
             np.save(messages_file, obs['message'])
             np.save(screen_descriptions_file, obs['screen_descriptions'])
+            counter += 1
 
-        glyphs_file.close()
-        messages_file.close()
-        screen_descriptions_file.close()
+    glyphs_file.close()
+    messages_file.close()
+    screen_descriptions_file.close()
 
 
 def main():
+    env_list = ['MiniHack-Room-Ultimate-15x15-v0',
+    'MiniHack-River-Monster-v0',
+    'MiniHack-River-v0',
+    'MiniHack-Corridor-R5-v0',
+    'MiniHack-KeyRoom-S15-v0',
+    'MiniHack-KeyRoom-Dark-S15-v0',
+    'MiniHack-MazeWalk-Mapped-45x19-v0',
+    'MiniHack-River-MonsterLava-v0',
+    'MiniHack-HideNSeek-Lava-v0',
+    'MiniHack-HideNSeek-Big-v0',
+    'MiniHack-CorridorBattle-v0',
+    'MiniHack-CorridorBattle-Dark-v0',
+    'MiniHack-Memento-F4-v0',
+    'MiniHack-ExploreMaze-Hard-Mapped-v0']
+
+    '''
     get_dataset('MiniHack-River-Monster-v0')
     get_dataset('MiniHack-River-v0')
+    '''
+
+    get_dataset(env_list)
     
 
 if __name__ == '__main__':

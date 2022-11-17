@@ -168,25 +168,11 @@ def save_bboxes_ground_truth_labels(args, out_dir, labels_dir):
             np.save('{}bbox_ground_truth_labels/{}_{}.npy'.format(out_dir, filename.name.split('/')[-1][:-4], counter), ground_truth_label)
             np.save('{}bbox_pred_classes/{}_{}.npy'.format(out_dir, filename.name.split('/')[-1][:-4], counter), pred_class)
 
-
-def save_predictions(args, out_dir):
-    cfg = setup_cfg(args)
-    demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
-
-    os.makedirs('{}bboxes/'.format(out_dir))
-    os.makedirs('{}pred_classes/'.format(out_dir))
-
-    for counter in range(len(os.listdir(args.input+'pixels/'))):
-        img_path = '{}.jpg'.format(counter)
-        img = read_image(args.input+'pixels/' + img_path, format="RGB")
-
-        predictions, _ = demo.run_on_image(img)
-        bboxes = predictions['instances'].pred_boxes.tensor.cpu().numpy()
-        pred_classes = predictions['instances'].pred_classes.cpu().numpy()
-
-        np.save('{}bboxes/{}.npy'.format(out_dir, counter), bboxes)
-        np.save('{}pred_classes/{}.npy'.format(out_dir, counter), pred_classes)
-
+def get_bbox_area(bbox):
+    x1, y1, x2, y2 = bbox
+    height = y2-y1
+    width = x2-x1
+    return height * width
 
 def main():
     args = get_parser().parse_args()
@@ -195,23 +181,37 @@ def main():
     logger.info("Arguments: " + str(args))
     np.set_printoptions(threshold=sys.maxsize)
 
-    screen_descriptions_dir = 'minihack_datasets/MiniHack-River-Monster-v0/dataset_0/screen_descriptions/'
-    word_screen_descriptions_dir = 'minihack_datasets/MiniHack-River-Monster-v0/dataset_0/word_screen_descriptions/'
-    pred_classes_dir = '/home/carla/detic-minihack-explore/Detic/outputs/screen_description_expts_all_items/pred_classes/'
+    screen_descriptions_dir = 'minihack_datasets/numerical_expts/screen_descriptions'
+    word_screen_descriptions_dir = 'minihack_datasets/numerical_expts/word_screen_descriptions'
 
     continuous_areas = ['', 'dark part of a room', 'floor of a room', 'water']
 
     #convert_hex_to_words(screen_descriptions_dir, word_screen_descriptions_dir)
-    vocab = get_descriptions_vocab(args)
+    #vocab = get_descriptions_vocab(args)
+    #file = open('vocab.txt', 'w')
+    #file.write(str(vocab))
+    #file.close()
+    vocab = {'', 'grid bug', 'lichen', 'a boulder', 'newt', 'jackal', 'a goblin corpse', 'sewer rat', 'dark part of a room', 'water', 'a newt corpse', 'kobold zombie', 'fox', 'a scroll labeled LOREM IPSUM', 'a lichen corpse', 'floor of a room', 'a kobold corpse', 'goblin', 'human rogue called Agent', 'staircase up'}
+    for item in continuous_areas:
+        if item in vocab:
+            vocab.remove(item)
     args.vocabulary = 'custom'
     args.custom_vocabulary = ','.join(vocab)
     
     label_to_i_dict = {label:i for i, label in enumerate(args.custom_vocabulary.split(','))}
     i_to_label_dict = {i:label for label, i in label_to_i_dict.items()}
 
-    thresh_ratios = []
-    for thresh in range(0, 100+1, 5):
-        img_ratios = []
+    thresh_pred_areas = []
+    count_diff_avgs = []
+    thresh_pred_totals = []
+    thresh_count_diffs = []
+    item_gt_area = 16*16
+    for thresh in range(0, 31, 2):
+        print(thresh)
+        print()
+        imgs_pred_totals = []
+        imgs_count_diffs = []
+        imgs_pred_areas = []
         args.confidence_threshold = thresh/100
         cfg = setup_cfg(args)
         demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
@@ -220,8 +220,11 @@ def main():
             img = read_image(file, format="RGB")
             gt_matrix = np.load(word_screen_descriptions_dir + file_num + '.npy', allow_pickle=True)
 
-            predictions, _ = demo.run_on_image(img)
+            predictions, visualized_output = demo.run_on_image(img)
+            #visualized_output.save('out.jpg')
             bboxes = predictions['instances'].pred_boxes.tensor.cpu().numpy()
+            for bbox in bboxes:
+                imgs_pred_areas.append(get_bbox_area(bbox) - item_gt_area)
             pred_classes = predictions['instances'].pred_classes.cpu().numpy()
             pred_classes = [i_to_label_dict[i] for i in pred_classes]
 
@@ -238,10 +241,31 @@ def main():
 
             gt_total = sum(gt_dicti.values())
             pred_total = sum(pred_dicti.values())
-            img_ratios.append(gt_total-pred_total)
-        plt.hist(img_ratios)
-        plt.savefig('plot.jpg')
-        thresh_ratios.append(img_ratios)
+            imgs_count_diffs.append(pred_total - gt_total)
+            imgs_pred_totals.append(pred_total)
+        thresh_count_diffs.append(imgs_count_diffs)
+        thresh_pred_areas.append(imgs_pred_areas)
+        thresh_pred_totals.append(pred_total)
+    count_diff_avgs = [np.average(img_count_diff) for img_count_diff in thresh_count_diffs]
+    pred_areas_avgs = [np.average(img_pred_areas) for img_pred_areas in thresh_pred_areas]
+    pred_total_avgs = [np.average(pred_total) for pred_total in thresh_pred_totals]
+    plt.figure()
+    plt.plot([thresh for thresh in range(0, 31, 2)], count_diff_avgs)
+    plt.xlabel("confidence threshold %")
+    plt.ylabel("num of bboxes returned by detic - num of items in gt image")
+    plt.savefig('plot_diff_avgs_3.jpg')
+    plt.figure()
+    plt.plot([thresh for thresh in range(0, 31, 2)], pred_areas_avgs)
+    plt.xlabel("confidence threshold %")
+    plt.ylabel("area of bbox returned by detic - area of bbox in gt image")
+    plt.savefig('plot_areas_avgs_3.jpg')
+    plt.figure()
+    plt.plot([thresh for thresh in range(0, 31, 2)], pred_total_avgs)
+    plt.xlabel("confidence threshold %")
+    plt.ylabel("num of bboxes returned by detic")
+    plt.savefig('plot_pred_total_avgs_3.jpg')
+    print(count_diff_avgs)
+    print(thresh_count_diffs)
 
 
     #single_items_count_accuracy(word_screen_descriptions_dir, pred_classes_dir, continuous_areas, i_to_label_dict)
