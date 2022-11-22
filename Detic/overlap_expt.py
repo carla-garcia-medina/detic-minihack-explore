@@ -174,6 +174,14 @@ def get_bbox_area(bbox):
     width = x2-x1
     return height * width
 
+def get_overlap_area(pred_bbox, gt_bbox):  # returns None if rectangles don't intersect
+    pred_x1, pred_y1, pred_x2, pred_y2 = pred_bbox
+    gt_x1, gt_y1, gt_x2, gt_y2 = gt_bbox
+    width = min(pred_x2, gt_x2) - max(pred_x1, gt_x1)
+    height = min(pred_y2, gt_y2) - max(pred_y1, gt_y1)
+    if (width>=0) and (height>=0):
+        return width*height
+
 def main():
     args = get_parser().parse_args()
     setup_logger(name="fvcore")
@@ -181,13 +189,13 @@ def main():
     logger.info("Arguments: " + str(args))
     np.set_printoptions(threshold=sys.maxsize)
 
-    screen_descriptions_dir = 'minihack_datasets/numerical_expts/screen_descriptions'
-    word_screen_descriptions_dir = 'minihack_datasets/numerical_expts/word_screen_descriptions'
+    screen_descriptions_dir = 'minihack_datasets/numerical_expts/screen_descriptions/'
+    word_screen_descriptions_dir = 'minihack_datasets/numerical_expts/word_screen_descriptions/'
 
     continuous_areas = ['', 'dark part of a room', 'floor of a room', 'water']
 
-    #convert_hex_to_words(screen_descriptions_dir, word_screen_descriptions_dir)
-    #vocab = get_descriptions_vocab(args)
+    convert_hex_to_words(screen_descriptions_dir, word_screen_descriptions_dir)
+    vocab = get_descriptions_vocab(args)
     #file = open('vocab.txt', 'w')
     #file.write(str(vocab))
     #file.close()
@@ -206,9 +214,6 @@ def main():
     for thresh in threshs:
         print(thresh)
         print()
-        imgs_pred_totals = []
-        imgs_count_diffs = []
-        imgs_pred_areas = []
         args.confidence_threshold = thresh/100
         cfg = setup_cfg(args)
         demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
@@ -221,56 +226,40 @@ def main():
             #visualized_output.save('out.jpg')
             bboxes = predictions['instances'].pred_boxes.tensor.cpu().numpy()
             
+            print(file.name)
+            print(gt_matrix.shape)
+
             gt_lst = gt_matrix.flatten()
             gt_lst = gt_lst[np.isin(gt_lst, continuous_areas, invert=True)]
             unique, counts = np.unique(gt_lst, return_counts=True)
             cost_matrix = np.zeros((len(bboxes), np.sum(counts)))
-            for bbox in bboxes:
-                imgs_pred_areas.append(get_bbox_area(bbox))
 
+            gt_bboxes = []
 
-            
-            pred_classes = predictions['instances'].pred_classes.cpu().numpy()
-            pred_classes = [i_to_label_dict[i] for i in pred_classes]
+            for col in range(gt_matrix.shape[0]):
+                for row in range(gt_matrix.shape[1]):
+                    if gt_matrix[col, row] not in continuous_areas:
+                        x1 = col * 16
+                        x2 = x1 + 16
+                        y1 = row * 16
+                        y2 = y1 + 16
+                        gt_bboxes.append((x1, y1, x2, y2))
 
-            
-            gt_dicti = dict(zip(unique, counts))
-            unique, counts = np.unique(pred_classes, return_counts=True)
-            pred_dicti = dict(zip(unique, counts))
+            for pred_bbox in bboxes:
+                for gt_bbox in gt_bboxes:
+                    pred_bbox_area = get_bbox_area(pred_bbox)
+                    overlap_area = get_overlap_area(pred_bbox, gt_bbox)
+                    print(overlap_area)
+                    #cost = overlap_area/max(pred_bbox_area, item_gt_area)
+                    #print(overlap_area)
 
-            for item in continuous_areas:
-                if item in gt_dicti:
-                    gt_dicti.pop(item)
-                if item in pred_dicti:
-                    pred_dicti.pop(item)
-
-            gt_total = sum(gt_dicti.values())
-            pred_total = sum(pred_dicti.values())
-            imgs_count_diffs.append(pred_total - gt_total)
-            imgs_pred_totals.append(pred_total)
-        thresh_count_diffs.append(imgs_count_diffs)
-        thresh_pred_areas.append(imgs_pred_areas)
-        thresh_pred_totals.append(pred_total)
-    count_diff_avgs = [np.average(img_count_diff) for img_count_diff in thresh_count_diffs]
-    pred_areas_avgs = [np.average(img_pred_areas) for img_pred_areas in thresh_pred_areas]
-    pred_total_avgs = [np.average(pred_total) for pred_total in thresh_pred_totals]
+    '''
     plt.figure()
     plt.plot([thresh for thresh in range(0, 31, 2)], count_diff_avgs)
     plt.xlabel("confidence threshold %")
     plt.ylabel("num of bboxes returned by detic - num of items in gt image")
     plt.savefig('plot_diff_avgs_3.jpg')
-    plt.figure()
-    plt.plot([thresh for thresh in range(0, 31, 2)], pred_areas_avgs)
-    plt.xlabel("confidence threshold %")
-    plt.ylabel("area of bbox returned by detic - area of bbox in gt image")
-    plt.savefig('plot_areas_avgs_3.jpg')
-    plt.figure()
-    plt.plot([thresh for thresh in range(0, 31, 2)], pred_total_avgs)
-    plt.xlabel("confidence threshold %")
-    plt.ylabel("num of bboxes returned by detic")
-    plt.savefig('plot_pred_total_avgs_3.jpg')
-    print(count_diff_avgs)
-    print(thresh_count_diffs)
+    '''
 
 
     #single_items_count_accuracy(word_screen_descriptions_dir, pred_classes_dir, continuous_areas, i_to_label_dict)

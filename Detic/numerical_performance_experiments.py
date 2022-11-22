@@ -181,8 +181,8 @@ def main():
     logger.info("Arguments: " + str(args))
     np.set_printoptions(threshold=sys.maxsize)
 
-    screen_descriptions_dir = 'minihack_datasets/numerical_expts/screen_descriptions'
-    word_screen_descriptions_dir = 'minihack_datasets/numerical_expts/word_screen_descriptions'
+    screen_descriptions_dir = 'minihack_datasets/numerical_expts/screen_descriptions/'
+    word_screen_descriptions_dir = 'minihack_datasets/numerical_expts/word_screen_descriptions/'
 
     continuous_areas = ['', 'dark part of a room', 'floor of a room', 'water']
 
