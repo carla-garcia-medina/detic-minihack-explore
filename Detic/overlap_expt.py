@@ -181,6 +181,8 @@ def get_overlap_area(pred_bbox, gt_bbox):  # returns None if rectangles don't in
     height = min(pred_y2, gt_y2) - max(pred_y1, gt_y1)
     if (width>=0) and (height>=0):
         return width*height
+    else:
+        return 0
 
 def main():
     args = get_parser().parse_args()
@@ -194,8 +196,8 @@ def main():
 
     continuous_areas = ['', 'dark part of a room', 'floor of a room', 'water']
 
-    convert_hex_to_words(screen_descriptions_dir, word_screen_descriptions_dir)
-    vocab = get_descriptions_vocab(args)
+    #convert_hex_to_words(screen_descriptions_dir, word_screen_descriptions_dir)
+    #vocab = get_descriptions_vocab(args)
     #file = open('vocab.txt', 'w')
     #file.write(str(vocab))
     #file.close()
@@ -218,6 +220,7 @@ def main():
         cfg = setup_cfg(args)
         demo = VisualizationDemo(cfg, args, name="screen_description_experiment_all_items")
         for file in os.scandir(args.input+'pixels/'):
+            print(file.name)
             file_num = str(file.name[:-4])
             img = read_image(file, format="RGB")
             gt_matrix = np.load(word_screen_descriptions_dir + file_num + '.npy', allow_pickle=True)
@@ -225,10 +228,7 @@ def main():
             predictions, visualized_output = demo.run_on_image(img)
             #visualized_output.save('out.jpg')
             bboxes = predictions['instances'].pred_boxes.tensor.cpu().numpy()
-            
-            print(file.name)
-            print(gt_matrix.shape)
-
+            print(len(bboxes))
             gt_lst = gt_matrix.flatten()
             gt_lst = gt_lst[np.isin(gt_lst, continuous_areas, invert=True)]
             unique, counts = np.unique(gt_lst, return_counts=True)
@@ -236,22 +236,24 @@ def main():
 
             gt_bboxes = []
 
-            for col in range(gt_matrix.shape[0]):
-                for row in range(gt_matrix.shape[1]):
-                    if gt_matrix[col, row] not in continuous_areas:
-                        x1 = col * 16
+            for i in range(gt_matrix.shape[0]):
+                for j in range(gt_matrix.shape[1]):
+                    if gt_matrix[i, j] not in continuous_areas:
+                        x1 = j * 16
                         x2 = x1 + 16
-                        y1 = row * 16
+                        y1 = i * 16
                         y2 = y1 + 16
                         gt_bboxes.append((x1, y1, x2, y2))
 
-            for pred_bbox in bboxes:
-                for gt_bbox in gt_bboxes:
+            for i, pred_bbox in enumerate(bboxes):
+                for j, gt_bbox in enumerate(gt_bboxes):
                     pred_bbox_area = get_bbox_area(pred_bbox)
                     overlap_area = get_overlap_area(pred_bbox, gt_bbox)
-                    print(overlap_area)
-                    #cost = overlap_area/max(pred_bbox_area, item_gt_area)
-                    #print(overlap_area)
+                    cost = overlap_area/max(pred_bbox_area, item_gt_area)
+                    cost_matrix[i, j] = cost
+            print(cost_matrix.shape)
+            print(np.amax(cost_matrix, axis=1).shape)
+            print(np.amax(cost_matrix, axis=1))
 
     '''
     plt.figure()
